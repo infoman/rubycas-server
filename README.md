@@ -1,19 +1,5 @@
-# RubyCAS-Server
+# MOVED!
 
-## Copyright
+This repo has been moved to https://github.com/rubycas/rubycas-server. 
 
-Portions contributed by Matt Zukowski are copyright (c) 2011 Urbacon Ltd.
-Other portions are copyright of their respective authors.
-
-## Authors
-
-See http://github.com/gunark/rubycas-server/commits/
-
-## Installation
-
-See http://code.google.com/p/rubycas-server
-
-## License
-
-RubyCAS-Server is licensed for use under the terms of the MIT License.
-See the LICENSE file bundled with the official RubyCAS-Server distribution for details.
+The fork you are looking at is no longer updated. Please change your git remotes to the new rubycas URL.

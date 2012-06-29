@@ -19,14 +19,8 @@ module CASServer
     include CASServer::CAS # CAS protocol helpers
     include Localization
 
-    # Use :public_folder for Sinatra >= 1.3, and :public for older versions.
-    def self.use_public_folder?
-      Sinatra.const_defined?("VERSION") && Gem::Version.new(Sinatra::VERSION) >= Gem::Version.new("1.3.0")
-    end
-
     set :app_file, __FILE__
-    set( use_public_folder? ? :public_folder : :public, # Workaround for differences in Sinatra versions.
-         Proc.new { settings.config[:public_dir] || File.join(root, "..", "..", "public") } )
+    set :public, Proc.new { settings.config[:public_dir] || File.join(root, "..", "..", "public") }
 
     config = HashWithIndifferentAccess.new(
       :maximum_unused_login_ticket_lifetime => 5.minutes,
@@ -40,13 +34,11 @@ module CASServer
     def self.uri_path
       config[:uri_path]
     end
-
+    
     # Strip the config.uri_path from the request.path_info...
     # FIXME: do we really need to override all of Sinatra's #static! to make this happen?
     def static!
-      # Workaround for differences in Sinatra versions.
-      public_dir = Server.use_public_folder? ? settings.public_folder : settings.public
-      return if public_dir.nil?
+      return if (public_dir = settings.public).nil?
       public_dir = File.expand_path(public_dir)
       
       path = File.expand_path(public_dir + unescape(request.path_info.gsub(/^#{settings.config[:uri_path]}/,'')))
@@ -289,6 +281,7 @@ module CASServer
     end
 
     before do
+      GetText.locale = determine_locale(request)
       content_type :html, 'charset' => 'utf-8'
       @theme = settings.config[:theme]
       @organization = settings.config[:organization]
@@ -327,7 +320,7 @@ module CASServer
 
       if tgt and !tgt_error
         @message = {:type => 'notice',
-          :message => t.notice.logged_in_as(tgt.username)}
+          :message => _("You are currently logged in as '%s'. If this is not you, please log in below.") % tgt.username }
       elsif tgt_error
         $LOG.debug("Ticket granting cookie could not be validated: #{tgt_error}")
       elsif !tgt
@@ -336,7 +329,7 @@ module CASServer
 
       if params['redirection_loop_intercepted']
         @message = {:type => 'mistake',
-          :message => t.error.unable_to_authenticate}
+          :message => _("The client and server are unable to negotiate authentication. Please try logging in again later.")}
       end
 
       begin
@@ -358,14 +351,14 @@ module CASServer
         elsif @gateway
             $LOG.error("This is a gateway request but no service parameter was given!")
             @message = {:type => 'mistake',
-              :message => t.error.no_service_parameter_given}
+              :message => _("The server cannot fulfill this gateway request because no service parameter was given.")}
         else
           $LOG.info("Proceeding with CAS login without a target service.")
         end
       rescue URI::InvalidURIError
         $LOG.error("The service '#{@service}' is not a valid URI!")
         @message = {:type => 'mistake',
-          :message => t.error.invalid_target_service}
+          :message => _("The target service your browser supplied appears to be invalid. Please contact your system administrator for help.")}
       end
 
       lt = generate_login_ticket
@@ -394,7 +387,7 @@ module CASServer
           render :login_form
         else
           status 500
-          render t.error.invalid_submit_to_uri
+          render _("Could not guess the CAS login URI. Please supply a submitToURI parameter with your request.")
         end
       else
         render @template_engine, :login
@@ -427,7 +420,7 @@ module CASServer
         # generate another login ticket to allow for re-submitting the form
         @lt = generate_login_ticket.ticket
         status 500
-        return render @template_engine, :login
+        render @template_engine, :login
       end
 
       # generate another login ticket to allow for re-submitting the form after a post
@@ -475,7 +468,7 @@ module CASServer
 
           if @service.blank?
             $LOG.info("Successfully authenticated user '#{@username}' at '#{tgt.client_hostname}'. No service param was given, so we will not redirect.")
-            @message = {:type => 'confirmation', :message => t.notice.success_logged_in}
+            @message = {:type => 'confirmation', :message => _("You have successfully logged in.")}
           else
             @st = generate_service_ticket(@service, @username, tgt)
 
@@ -488,20 +481,20 @@ module CASServer
               $LOG.error("The service '#{@service}' is not a valid URI!")
               @message = {
                 :type => 'mistake',
-                :message => t.error.invalid_target_service
+                :message => _("The target service your browser supplied appears to be invalid. Please contact your system administrator for help.")
               }
             end
           end
         else
           $LOG.warn("Invalid credentials given for user '#{@username}'")
-          @message = {:type => 'mistake', :message => t.error.incorrect_username_or_password}
+          @message = {:type => 'mistake', :message => _("Incorrect username or password.")}
           status 401
         end
       rescue CASServer::AuthenticatorError => e
         $LOG.error(e)
         # generate another login ticket to allow for re-submitting the form
         @lt = generate_login_ticket.ticket
-        @message = {:type => 'mistake', :message => e.to_s}
+        @message = {:type => 'mistake', :message => _(e.to_s)}
         status 401
       end
 
@@ -560,9 +553,9 @@ module CASServer
         $LOG.warn("User tried to log out without a valid ticket-granting ticket.")
       end
 
-      @message = {:type => 'confirmation', :message => t.notice.success_logged_out}
+      @message = {:type => 'confirmation', :message => _("You have successfully logged out.")}
 
-      @message[:message] += t.notice.click_to_continue if @continue_url
+      @message[:message] +=_(" Please click on the following link to continue:") if @continue_url
 
       @lt = generate_login_ticket
 
@@ -588,7 +581,7 @@ module CASServer
 
       status 422
 
-      t.error.login_ticket_needs_post_request
+      "To generate a login ticket, you must make a POST request."
     end
 
 
@@ -756,3 +749,4 @@ module CASServer
     end
   end
 end
+
