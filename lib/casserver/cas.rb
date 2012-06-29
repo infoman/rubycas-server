@@ -119,20 +119,20 @@ module CASServer::CAS
 
     success = false
     if ticket.nil?
-      error = _("Your login request did not include a login ticket. There may be a problem with the authentication system.")
+      error = t.error.no_login_ticket
       $LOG.warn "Missing login ticket."
     elsif lt = LoginTicket.find_by_ticket(ticket)
       if lt.consumed?
-        error = _("The login ticket you provided has already been used up. Please try logging in again.")
+        error = t.error.login_ticket_already_used
         $LOG.warn "Login ticket '#{ticket}' previously used up"
       elsif Time.now - lt.created_on < settings.config[:maximum_unused_login_ticket_lifetime]
         $LOG.info "Login ticket '#{ticket}' successfully validated"
       else
-        error = _("You took too long to enter your credentials. Please try again.")
+        error = t.error.login_timeout
         $LOG.warn "Expired login ticket '#{ticket}'"
       end
     else
-      error = _("The login ticket you provided is invalid. There may be a problem with the authentication system.")
+      error = t.error.invalid_login_ticket
       $LOG.warn "Invalid login ticket '#{ticket}'"
     end
 
@@ -244,18 +244,26 @@ module CASServer::CAS
     uri.path = '/' if uri.path.empty?
     time = Time.now
     rand = CASServer::Utils.random_string
-
+    path = uri.path
+    req = Net::HTTP::Post.new(path)
+    req.set_form_data('logoutRequest' => %{<samlp:LogoutRequest ID="#{rand}" Version="2.0" IssueInstant="#{time.rfc2822}">
+ <saml:NameID></saml:NameID>
+ <samlp:SessionIndex>#{st.ticket}</samlp:SessionIndex>
+ </samlp:LogoutRequest>})
+ 
     begin
-      response = Net::HTTP.post_form(uri, {'logoutRequest' => URI.escape(%{<samlp:LogoutRequest ID="#{rand}" Version="2.0" IssueInstant="#{time.rfc2822}">
-        <saml:NameID></saml:NameID>
-        <samlp:SessionIndex>#{st.ticket}</samlp:SessionIndex>
-        </samlp:LogoutRequest>})})
-      if response.kind_of? Net::HTTPSuccess
-        $LOG.info "Logout notification successfully posted to #{st.service.inspect}."
-        return true
-      else
-        $LOG.error "Service #{st.service.inspect} responed to logout notification with code '#{response.code}'!"
-        return false
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = true if uri.scheme =='https'
+      
+      http.start do |conn|
+        response = conn.request(req)
+        if response.kind_of? Net::HTTPSuccess
+          $LOG.info "Logout notification successfully posted to #{st.service.inspect}."
+          return true
+        else
+          $LOG.error "Service #{st.service.inspect} responed to logout notification with code '#{response.code}'!"
+          return false
+        end
       end
     rescue Exception => e
       $LOG.error "Failed to send logout notification to service #{st.service.inspect} due to #{e}"
