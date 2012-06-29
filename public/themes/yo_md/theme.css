@@ -45,6 +45,16 @@ body {
   background-image: none;
 }
 
+#messagebox-container div.confirmation {
+  color: #fff;
+  text-shadow: #280 -1px -1px;
+}
+
+#messagebox-container div.notice {
+  color: #fff;
+  text-shadow: #04c -1px -1px;
+}
+
 #messagebox-container div.mistake {
   color: #fff;
   text-shadow: #d00 -1px -1px;
