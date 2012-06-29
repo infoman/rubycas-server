@@ -1,0 +1,26 @@
+<%# coding: UTF-8 -%>
+<div id="login-box">
+  <div id="headline-container">
+    <div id="logo-container">
+      <a href="http://yo.md" onclick="window.open(this.href); return false;"><img id="logo" src="<%= escape_html @uri_path %>/themes/<%= @theme %>/logo.png" alt="<%= escape_html @organization %>" title="<%= escape_html @organization %> — Портал Нашего Городка!" /></a>
+    </div>
+    <%= _(" Central Login") %>
+  </div>
+
+  <% if @message %>
+    <div id="messagebox-container">
+      <div class="messagebox <%= escape_html @message[:type] %>">
+        <%= escape_html @message[:message] %>
+      </div>
+    </div>
+  <% end %>
+
+  <div id="login-form-container">
+    <%= erb(:_login_form, :layout => false) %>
+  </div>
+</div>
+
+<div id="infoline">
+  <%= @infoline %>
+</div>
+

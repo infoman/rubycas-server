@@ -1,0 +1,28 @@
+<%# coding: UTF-8 -%>
+<form method="post" action="<%= @form_action || "login" %>" id="login-form"
+      onsubmit="submitbutton = document.getElementById('login-submit'); submitbutton.value='<%= _("Please wait...") %>'; submitbutton.disabled=true; return true;">
+  <div id="form-layout">
+    <div id="fields-container">
+      <div id="username-container">
+        <label id="username-label" for="username">
+          <%= _("Username") %>:
+        </label>
+        <input type="text" id="username" name="username"
+               size="32" tabindex="1" accesskey="u" />
+      </div>
+      <div id="password-container">
+        <label id="password-label" for="password">
+          <%= _("Password") %>:
+        </label>
+        <input type="password" id="password" name="password"
+               size="32" tabindex="2" accesskey="p" autocomplete="off" />
+      </div>
+    </div>
+    <div id="submit-container">
+      <input type="hidden" id="lt" name="lt" value="<%= escape_html @lt %>" />
+      <input type="hidden" id="service" name="service" value="<%= escape_html @service %>" />
+      <input type="submit" class="button" accesskey="l" value="<%= _("LOGIN") %>"
+             tabindex="4" id="login-submit" />
+    </div>
+  </div>
+</form>

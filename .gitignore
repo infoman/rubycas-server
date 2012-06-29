@@ -9,10 +9,11 @@ config.yml
 *.mo
 pkg
 ssl
-custom/*
 .DS_Store
 /nbproject
 .irbrc_history
 resources/dev
 .rvmrc
 .bundle
+tmp
+vendor
