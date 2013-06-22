@@ -457,6 +457,7 @@ module CASServer
         end
 
         if credentials_are_valid
+          @username = successful_authenticator.username
           $LOG.info("Credentials for username '#{@username}' successfully validated using #{successful_authenticator.class.name}.")
           $LOG.debug("Authenticator provided additional user attributes: #{extra_attributes.inspect}") unless extra_attributes.blank?
 
