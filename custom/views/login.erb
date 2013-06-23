@@ -5,6 +5,10 @@
       <a href="http://yo.md" onclick="window.open(this.href); return false;"><img id="logo" src="<%= escape_html @uri_path %>/themes/<%= @theme %>/logo.png" alt="<%= escape_html @organization %>" title="<%= escape_html @organization %> — Портал Нашего Городка!" /></a>
     </div>
     <%= _(" Central Login") %>
+    <div id="uLogin-wrap">
+      <div class="title"><%= _('You can also login with:') %></div>
+      <div id="uLogin" data-ulogin="display=panel;fields=first_name,last_name,email;optional=nickname;verify=1;providers=google,facebook,vkontakte,odnoklassniki;hidden=other;redirect_uri=;callback=fill_ulogin"></div>
+    </div>
   </div>
 
   <% if @message %>

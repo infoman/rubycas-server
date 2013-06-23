@@ -116,3 +116,6 @@ msgstr ""
 #: lib/casserver/views.rb:101
 msgid "LOGIN"
 msgstr "Войти"
+
+msgid "You can also login with:"
+msgstr "Вы можете войти через:"
