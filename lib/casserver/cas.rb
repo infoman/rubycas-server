@@ -2,6 +2,7 @@ require 'uri'
 require 'net/https'
 
 require 'casserver/model'
+require 'casserver/core_ext'
 
 # Encapsulates CAS functionality. This module is meant to be included in
 # the CASServer::Controllers module.
@@ -12,7 +13,7 @@ module CASServer::CAS
   def generate_login_ticket
     # 3.5 (login ticket)
     lt = LoginTicket.new
-    lt.ticket = "LT-" + CASServer::Utils.random_string
+    lt.ticket = "LT-" + String.random
 
     lt.client_hostname = @env['HTTP_X_FORWARDED_FOR'] || @env['REMOTE_HOST'] || @env['REMOTE_ADDR']
     lt.save!
@@ -30,7 +31,7 @@ module CASServer::CAS
   def generate_ticket_granting_ticket(username, extra_attributes = {})
     # 3.6 (ticket granting cookie/ticket)
     tgt = TicketGrantingTicket.new
-    tgt.ticket = "TGC-" + CASServer::Utils.random_string
+    tgt.ticket = "TGC-" + String.random
     tgt.username = username
     tgt.extra_attributes = extra_attributes
     tgt.client_hostname = @env['HTTP_X_FORWARDED_FOR'] || @env['REMOTE_HOST'] || @env['REMOTE_ADDR']
@@ -44,7 +45,7 @@ module CASServer::CAS
   def generate_service_ticket(service, username, tgt)
     # 3.1 (service ticket)
     st = ServiceTicket.new
-    st.ticket = "ST-" + CASServer::Utils.random_string
+    st.ticket = "ST-" + String.random
     st.service = service
     st.username = username
     st.granted_by_tgt_id = tgt.id
@@ -58,11 +59,11 @@ module CASServer::CAS
   def generate_proxy_ticket(target_service, pgt)
     # 3.2 (proxy ticket)
     pt = ProxyTicket.new
-    pt.ticket = "PT-" + CASServer::Utils.random_string
+    pt.ticket = "PT-" + String.random
     pt.service = target_service
     pt.username = pgt.service_ticket.username
     pt.granted_by_pgt_id = pgt.id
-    pt.granted_by_tgt_id = pgt.service_ticket.granted_by_tgt.id
+    pt.granted_by_tgt_id = pgt.service_ticket.granted_by_tgt_id
     pt.client_hostname = @env['HTTP_X_FORWARDED_FOR'] || @env['REMOTE_HOST'] || @env['REMOTE_ADDR']
     pt.save!
     $LOG.debug("Generated proxy ticket '#{pt.ticket}' for target service '#{pt.service}'" +
@@ -88,8 +89,8 @@ module CASServer::CAS
       path += '?' + uri.query unless (uri.query.nil? || uri.query.empty?)
       
       pgt = ProxyGrantingTicket.new
-      pgt.ticket = "PGT-" + CASServer::Utils.random_string(60)
-      pgt.iou = "PGTIOU-" + CASServer::Utils.random_string(57)
+      pgt.ticket = "PGT-" + String.random(60)
+      pgt.iou = "PGTIOU-" + String.random(57)
       pgt.service_ticket_id = st.id
       pgt.client_hostname = @env['HTTP_X_FORWARDED_FOR'] || @env['REMOTE_HOST'] || @env['REMOTE_ADDR']
 
@@ -119,20 +120,20 @@ module CASServer::CAS
 
     success = false
     if ticket.nil?
-      error = _("Your login request did not include a login ticket. There may be a problem with the authentication system.")
+      error = t.error.no_login_ticket
       $LOG.warn "Missing login ticket."
     elsif lt = LoginTicket.find_by_ticket(ticket)
       if lt.consumed?
-        error = _("The login ticket you provided has already been used up. Please try logging in again.")
+        error = t.error.login_ticket_already_used
         $LOG.warn "Login ticket '#{ticket}' previously used up"
       elsif Time.now - lt.created_on < settings.config[:maximum_unused_login_ticket_lifetime]
         $LOG.info "Login ticket '#{ticket}' successfully validated"
       else
-        error = _("You took too long to enter your credentials. Please try again.")
+        error = t.error.login_timeout
         $LOG.warn "Expired login ticket '#{ticket}'"
       end
     else
-      error = _("The login ticket you provided is invalid. There may be a problem with the authentication system.")
+      error = t.error.invalid_login_ticket
       $LOG.warn "Invalid login ticket '#{ticket}'"
     end
 
@@ -243,19 +244,27 @@ module CASServer::CAS
     uri = URI.parse(st.service)
     uri.path = '/' if uri.path.empty?
     time = Time.now
-    rand = CASServer::Utils.random_string
-
+    rand = String.random
+    path = uri.path
+    req = Net::HTTP::Post.new(path)
+    req.set_form_data('logoutRequest' => %{<samlp:LogoutRequest xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="#{rand}" Version="2.0" IssueInstant="#{time.rfc2822}">
+ <saml:NameID></saml:NameID>
+ <samlp:SessionIndex>#{st.ticket}</samlp:SessionIndex>
+ </samlp:LogoutRequest>})
+ 
     begin
-      response = Net::HTTP.post_form(uri, {'logoutRequest' => URI.escape(%{<samlp:LogoutRequest ID="#{rand}" Version="2.0" IssueInstant="#{time.rfc2822}">
-        <saml:NameID></saml:NameID>
-        <samlp:SessionIndex>#{st.ticket}</samlp:SessionIndex>
-        </samlp:LogoutRequest>})})
-      if response.kind_of? Net::HTTPSuccess
-        $LOG.info "Logout notification successfully posted to #{st.service.inspect}."
-        return true
-      else
-        $LOG.error "Service #{st.service.inspect} responed to logout notification with code '#{response.code}'!"
-        return false
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = true if uri.scheme =='https'
+      
+      http.start do |conn|
+        response = conn.request(req)
+        if response.kind_of? Net::HTTPSuccess
+          $LOG.info "Logout notification successfully posted to #{st.service.inspect}."
+          return true
+        else
+          $LOG.error "Service #{st.service.inspect} responed to logout notification with code '#{response.code}'!"
+          return false
+        end
       end
     rescue Exception => e
       $LOG.error "Failed to send logout notification to service #{st.service.inspect} due to #{e}"

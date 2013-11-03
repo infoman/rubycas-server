@@ -4,7 +4,7 @@ require File.dirname(__FILE__) + '/spec_helper'
 $LOG = Logger.new(File.basename(__FILE__).gsub('.rb','.log'))
 
 RSpec.configure do |config|
-  config.include Capybara
+  config.include Capybara::DSL
 end
 
 VALID_USERNAME = 'spec_user'
@@ -14,6 +14,7 @@ ATTACK_USERNAME = '%3E%22%27%3E%3Cscript%3Ealert%2826%29%3C%2Fscript%3E&password
 INVALID_PASSWORD = 'invalid_password'
 
 describe 'CASServer' do
+  include Rack::Test::Methods
 
   before do
     @target_service = 'http://my.app.test'
@@ -21,7 +22,7 @@ describe 'CASServer' do
 
   describe "/login" do
     before do
-      load_server(File.dirname(__FILE__) + "/default_config.yml")
+      load_server("default_config")
       reset_spec_database
     end
 
@@ -66,14 +67,21 @@ describe 'CASServer' do
       page.should have_xpath('//input[@id="service"]', :value => @target_service)
     end
 
-    it "uses appropriate localization when 'lang' prameter is given (make sure you've run `rake localization:mo` first!!)" do
-      visit "/login?lang=pl"
+    it "uses appropriate localization based on Accept-Language header" do
+
+      page.driver.options[:headers] = {'HTTP_ACCEPT_LANGUAGE' => 'pl'}
+      #visit "/login?lang=pl"
+      visit "/login"
       page.should have_content("Użytkownik")
 
-      visit "/login?lang=pt_BR"
+      page.driver.options[:headers] = {'HTTP_ACCEPT_LANGUAGE' => 'pt_BR'}
+      #visit "/login?lang=pt_BR"
+      visit "/login"
       page.should have_content("Usuário")
 
-      visit "/login?lang=en"
+      page.driver.options[:headers] = {'HTTP_ACCEPT_LANGUAGE' => 'en'}
+      #visit "/login?lang=en"
+      visit "/login"
       page.should have_content("Username")
     end
 
@@ -88,29 +96,41 @@ describe 'CASServer' do
 
 
   describe '/logout' do
+    describe 'user logged in' do
+      before do
+        load_server("default_config")
+        reset_spec_database
+        visit "/login"
+        fill_in 'username', :with => VALID_USERNAME
+        fill_in 'password', :with => VALID_PASSWORD
+        click_button 'login-submit'
+        page.should have_content("You have successfully logged in")
+      end
 
-    before do
-      load_server(File.dirname(__FILE__) + "/default_config.yml")
-      reset_spec_database
+      it "logs out user who is looged in" do
+        visit "/logout"
+        page.should have_content("You have successfully logged out")
+      end
+
+      it "logs out successfully and redirects to target service" do
+        visit "/logout?gateway=true&service="+CGI.escape(@target_service)
+
+        page.current_url.should =~ /^#{Regexp.escape(@target_service)}\/?/
+      end
     end
 
-    it "logs out successfully" do
-      visit "/logout"
-
-      page.should have_content("You have successfully logged out")
-    end
-
-    it "logs out successfully and redirects to target service" do
-      visit "/logout?gateway=true&service="+CGI.escape(@target_service)
-
-      page.current_url.should =~ /^#{Regexp.escape(@target_service)}\/?/
+    describe "user not logged in" do
+      it "try logs out user which is not logged in" do
+        visit "/logout"
+        page.should have_content("You have successfully logged out")
+      end
     end
 
   end # describe '/logout'
 
   describe 'Configuration' do
     it "uri_path value changes prefix of routes" do
-      load_server(File.dirname(__FILE__) + "/alt_config.yml")
+      load_server("alt_config")
       @target_service = 'http://my.app.test'
 
       visit "/test/login"
@@ -121,29 +141,80 @@ describe 'CASServer' do
     end
   end
 
-  describe "proxyValidate" do
+  describe 'validation' do
+    let(:allowed_ip) { '127.0.0.1' }
+    let(:unallowed_ip) { '10.0.0.1' }
+    let(:service) { @target_service }
+
     before do
-      load_server(File.dirname(__FILE__) + "/default_config.yml")
+      load_server('default_config')  # 127.0.0.0/24 is allowed here
       reset_spec_database
 
-      visit "/login?service="+CGI.escape(@target_service)
+      ticket = get_ticket_for(service)
 
-      fill_in 'username', :with => VALID_USERNAME
-      fill_in 'password', :with => VALID_PASSWORD
-
-      click_button 'login-submit'
-
-      page.current_url.should =~ /^#{Regexp.escape(@target_service)}\/?\?ticket=ST\-[1-9rA-Z]+/
-      @ticket = page.current_url.match(/ticket=(.*)$/)[1]
+      Rack::Request.any_instance.stub(:ip).and_return(request_ip)
+      get "/#{path}?service=#{CGI.escape(service)}&ticket=#{CGI.escape(ticket)}"
     end
 
-    it "should have extra attributes in proper format" do
-      visit "/serviceValidate?service=#{CGI.escape(@target_service)}&ticket=#{@ticket}"
+    subject { last_response }
 
-      encoded_utf_string = "&#1070;&#1090;&#1092;" # actual string is "Ютф"
-      page.body.should match("<test_utf_string>#{encoded_utf_string}</test_utf_string>")
-      page.body.should match("<test_numeric>123.45</test_numeric>")
-      page.body.should match("<test_utf_string>&#1070;&#1090;&#1092;</test_utf_string>")
+    describe 'validate' do
+      let(:path) { 'validate' }
+
+      context 'from allowed IP' do
+        let(:request_ip) { allowed_ip }
+
+        it { should be_ok }
+        its(:body) { should match 'yes' }
+      end
+
+      context 'from unallowed IP' do
+        let(:request_ip) { unallowed_ip }
+
+        its(:status) { should eql 422 }
+        its(:body) { should match 'no' }
+      end
+    end
+
+    describe 'serviceValidate' do
+      let(:path) { 'serviceValidate' }
+
+      context 'from allowed IP' do
+        let(:request_ip) { allowed_ip }
+
+        it { should be_ok }
+        its(:content_type) { should match 'text/xml' }
+        its(:body) { should match /cas:authenticationSuccess/i }
+        its(:body) { should match '<test_utf_string>Ютф</test_utf_string>' }
+      end
+
+      context 'from unallowed IP' do
+        let(:request_ip) { unallowed_ip }
+
+        its(:status) { should eql 422 }
+        its(:content_type) { should match 'text/xml' }
+        its(:body) { should match /cas:authenticationFailure.*INVALID_REQUEST/i }
+      end
+    end
+
+    describe 'proxyValidate' do
+      let(:path) { 'proxyValidate' }
+
+      context 'from allowed IP' do
+        let(:request_ip) { allowed_ip }
+
+        it { should be_ok }
+        its(:content_type) { should match 'text/xml' }
+        its(:body) { should match /cas:authenticationSuccess/i }
+      end
+
+      context 'from unallowed IP' do
+        let(:request_ip) { unallowed_ip }
+
+        its(:status) { should eql 422 }
+        its(:content_type) { should match 'text/xml' }
+        its(:body) { should match /cas:authenticationFailure.*INVALID_REQUEST/i }
+      end
     end
   end
 end

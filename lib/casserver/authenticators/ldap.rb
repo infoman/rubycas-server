@@ -1,22 +1,7 @@
-require 'casserver/authenticators/base'
-
 begin
   require 'net/ldap'
 rescue LoadError
-  require 'rubygems'
-  begin
-    gem 'net-ldap', '~> 0.1.1'
-  rescue Gem::LoadError
-    $stderr.puts
-    $stderr.puts "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-    $stderr.puts
-    $stderr.puts "To use the LDAP/AD authenticator, you must first install the 'net-ldap' gem."
-    $stderr.puts "        See http://github.com/RoryO/ruby-net-ldap for details."
-    $stderr.puts
-    $stderr.puts "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-    exit 1
-  end
-  require 'net/ldap'
+  $stderr.puts "To use the LDAP/AD authenticator, you must first install gems from ldap group. See: Gemfile"
 end
 
 # Basic LDAP authenticator. Should be compatible with OpenLDAP and other similar LDAP servers,
@@ -72,6 +57,7 @@ class CASServer::Authenticators::LDAP < CASServer::Authenticators::Base
     # Add prefix to username, if :username_prefix was specified in the :ldap config.
     def preprocess_username
       @username = @options[:ldap][:username_prefix] + @username if @options[:ldap][:username_prefix]
+      @username = @username + @options[:ldap][:username_postfix] if @options[:ldap][:username_postfix]
     end
 
     # Attempt to bind with the LDAP server using the username and password entered by
