@@ -7,7 +7,6 @@ config.yml
 *.pidaproject
 *.log
 *.mo
-Gemfile.lock
 pkg
 ssl
 custom/*
@@ -20,4 +19,4 @@ resources/dev
 .vagrant
 Vagrantfile
 tmp
-vendor
+Gemfile.lock

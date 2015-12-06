@@ -49,14 +49,12 @@ class CASServer::Authenticators::SQLAuthlogic < CASServer::Authenticators::SQL
     read_standard_credentials(credentials)
     raise_if_not_configured
 
-    user_model = self.class.user_model
-
     username_column = @options[:username_column] || "login"
     password_column = @options[:password_column] || "crypted_password"
     salt_column     = @options[:salt_column]
 
     log_connection_pool_size
-    results = user_model.find(:all, :conditions => ["#{username_column} = ?", @username])
+    results = matching_users
     user_model.connection_pool.checkin(user_model.connection)
 
     begin
@@ -89,5 +87,11 @@ class CASServer::Authenticators::SQLAuthlogic < CASServer::Authenticators::SQL
     else
       return false
     end
+  end
+
+  protected
+
+  def matching_users
+    user_model.find(:all, :conditions => ["#{username_column} = ?", @username])
   end
 end
