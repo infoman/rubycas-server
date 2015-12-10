@@ -7,7 +7,7 @@ class CASServer::Authenticators::Ulogin < CASServer::Authenticators::Base
     return false unless @username == 'ulogin' && /[0-9a-fA-F]{32}/.match(@password)
 
     $LOG.info "This seems to be an uLogin sign-in with token #{@password}"
-    url = "http://ulogin.ru/token.php?token=#{@password}"
+    url = "https://ulogin.ru/token.php?token=#{@password}"
     response = Net::HTTP.get_response(URI.parse(url))
     raise 'Ulogin server fault' unless response.code == '200'
 
