@@ -16,7 +16,9 @@
         $('#username').val('ulogin');
         $('#password').val(token);
 
-        $('#password').attr('autocomplete', 'off');
+        $('#fields-container input').attr('type', 'hidden');
+        $('#fields-container>div').hide();
+        $('#fields-container').append('<div class="messagebox notice">Processing uLogin authentication...</div>');
         $('#login-form').submit();
       }
     </script>
